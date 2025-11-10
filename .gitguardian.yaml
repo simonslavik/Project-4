@@ -1,0 +1,17 @@
+# GitGuardian Configuration
+# This file tells GitGuardian to ignore example passwords in documentation
+
+# Paths to exclude from secret scanning
+paths-ignore:
+  - "**/*.md"
+  - "**/*.example"
+  - ".env.example"
+  - "**/env.example"
+  - "setup.sh"
+  - "QUICK_START.md"
+  - "API_EXAMPLES.md"
+  - "PROJECT_SUMMARY.md"
+  - "README.md"
+
+# These are development-only example credentials, not production secrets
+# Production deployments must use strong, unique passwords via environment variables

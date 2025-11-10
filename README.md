@@ -2,6 +2,8 @@
 
 A complete microservices architecture for a food delivery platform built with Node.js, featuring multiple services communicating via REST APIs and RabbitMQ message queue.
 
+> **⚠️ Security Notice:** This project uses example credentials for **local development only**. The passwords in `.env.example` and documentation files are intentional and safe for learning purposes. **Never use these in production!** See [SECURITY.md](SECURITY.md) for production deployment guidelines.
+
 ## 🏗️ Architecture
 
 This project demonstrates a microservices architecture with the following services:
