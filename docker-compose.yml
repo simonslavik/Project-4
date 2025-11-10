@@ -1,0 +1,243 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: food-delivery-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fooddelivery}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fooddelivery123}
+      POSTGRES_DB: ${POSTGRES_DB:-fooddelivery}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooddelivery"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - food-delivery-network
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7
+    container_name: food-delivery-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-admin123}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - food-delivery-network
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: food-delivery-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin123}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - food-delivery-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: food-delivery-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - food-delivery-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: food-delivery-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=development
+      - RESTAURANT_SERVICE_URL=http://restaurant-service:3001
+      - MENU_SERVICE_URL=http://menu-service:3002
+      - ORDER_SERVICE_URL=http://order-service:3003
+      - DELIVERY_SERVICE_URL=http://delivery-service:3004
+      - RATING_SERVICE_URL=http://rating-service:3005
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/api-gateway:/app
+      - /app/node_modules
+    networks:
+      - food-delivery-network
+    command: npm run dev
+
+  # Restaurant Service
+  restaurant-service:
+    build:
+      context: ./services/restaurant-service
+      dockerfile: Dockerfile
+    container_name: food-delivery-restaurant-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-fooddelivery}:${POSTGRES_PASSWORD:-fooddelivery123}@postgres:5432/restaurants
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-admin}:${RABBITMQ_DEFAULT_PASS:-admin123}@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./services/restaurant-service:/app
+      - /app/node_modules
+    networks:
+      - food-delivery-network
+    command: npm run dev
+
+  # Menu Service
+  menu-service:
+    build:
+      context: ./services/menu-service
+      dockerfile: Dockerfile
+    container_name: food-delivery-menu-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - NODE_ENV=development
+      - MONGO_URL=mongodb://${MONGO_INITDB_ROOT_USERNAME:-admin}:${MONGO_INITDB_ROOT_PASSWORD:-admin123}@mongodb:27017/menus?authSource=admin
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-admin}:${RABBITMQ_DEFAULT_PASS:-admin123}@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./services/menu-service:/app
+      - /app/node_modules
+    networks:
+      - food-delivery-network
+    command: npm run dev
+
+  # Order Service
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: food-delivery-order-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-fooddelivery}:${POSTGRES_PASSWORD:-fooddelivery123}@postgres:5432/orders
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-admin}:${RABBITMQ_DEFAULT_PASS:-admin123}@rabbitmq:5672
+      - MENU_SERVICE_URL=http://menu-service:3002
+      - RESTAURANT_SERVICE_URL=http://restaurant-service:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./services/order-service:/app
+      - /app/node_modules
+    networks:
+      - food-delivery-network
+    command: npm run dev
+
+  # Delivery Service
+  delivery-service:
+    build:
+      context: ./services/delivery-service
+      dockerfile: Dockerfile
+    container_name: food-delivery-delivery-service
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - NODE_ENV=development
+      - MONGO_URL=mongodb://${MONGO_INITDB_ROOT_USERNAME:-admin}:${MONGO_INITDB_ROOT_PASSWORD:-admin123}@mongodb:27017/deliveries?authSource=admin
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-admin}:${RABBITMQ_DEFAULT_PASS:-admin123}@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./services/delivery-service:/app
+      - /app/node_modules
+    networks:
+      - food-delivery-network
+    command: npm run dev
+
+  # Rating Service
+  rating-service:
+    build:
+      context: ./services/rating-service
+      dockerfile: Dockerfile
+    container_name: food-delivery-rating-service
+    ports:
+      - "3005:3005"
+    environment:
+      - PORT=3005
+      - NODE_ENV=development
+      - MONGO_URL=mongodb://${MONGO_INITDB_ROOT_USERNAME:-admin}:${MONGO_INITDB_ROOT_PASSWORD:-admin123}@mongodb:27017/ratings?authSource=admin
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-admin}:${RABBITMQ_DEFAULT_PASS:-admin123}@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./services/rating-service:/app
+      - /app/node_modules
+    networks:
+      - food-delivery-network
+    command: npm run dev
+
+networks:
+  food-delivery-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  rabbitmq_data:
+  redis_data:

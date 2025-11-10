@@ -1,0 +1,30 @@
+{
+  "name": "food-delivery-microservices",
+  "version": "1.0.0",
+  "description": "Food delivery platform built with microservices architecture",
+  "main": "index.js",
+  "scripts": {
+    "install-all": "npm install && npm install --prefix services/api-gateway && npm install --prefix services/restaurant-service && npm install --prefix services/menu-service && npm install --prefix services/order-service && npm install --prefix services/delivery-service && npm install --prefix services/rating-service",
+    "docker:up": "docker-compose up --build",
+    "docker:down": "docker-compose down",
+    "docker:clean": "docker-compose down -v",
+    "dev:gateway": "npm run dev --prefix services/api-gateway",
+    "dev:restaurant": "npm run dev --prefix services/restaurant-service",
+    "dev:menu": "npm run dev --prefix services/menu-service",
+    "dev:order": "npm run dev --prefix services/order-service",
+    "dev:delivery": "npm run dev --prefix services/delivery-service",
+    "dev:rating": "npm run dev --prefix services/rating-service",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "microservices",
+    "food-delivery",
+    "nodejs",
+    "express",
+    "rabbitmq",
+    "postgresql",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "MIT"
+}
